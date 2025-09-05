@@ -1,0 +1,19 @@
+{
+  "name": "buton",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@fizzxydev/baileys-pro": "^8.7.2",
+    "@hapi/boom": "^10.0.1",
+    "axios": "^1.11.0",
+    "express": "^5.1.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

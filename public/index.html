@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp API GUI</title>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6c757d;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --light-bg: #f8f9fa;
+            --dark-bg: #343a40;
+            --text-color: #212529;
+            --border-color: #dee2e6;
+            --card-bg: #ffffff;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--light-bg);
+            margin: 0;
+            padding: 20px;
+            color: var(--text-color);
+        }
+
+        .container {
+            max-width: 800px;
+            margin: auto;
+            padding: 0 15px;
+        }
+
+        h1, h2 {
+            text-align: center;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .form-control, .btn {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary-color);
+            outline: none;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+
+        .btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn:hover {
+            background-color: #0056b3;
+        }
+
+        .btn:disabled {
+            background-color: var(--secondary-color);
+            cursor: not-allowed;
+        }
+
+        .message-area {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .message-area.success {
+            background-color: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+
+        .message-area.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
+
+        .results-area {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: "Courier New", Courier, monospace;
+            font-size: 14px;
+            margin-top: 20px;
+            border: 1px solid #ced4da;
+        }
+
+        .toggle-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .toggle-btn {
+            background-color: var(--light-bg);
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .toggle-btn.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .button-section {
+            border-top: 1px dashed var(--border-color);
+            padding-top: 10px;
+            margin-top: 15px;
+        }
+
+        /* Group List Specific Styles */
+        #groups-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 10px;
+        }
+
+        #groups-list li {
+            background-color: #fff;
+            padding: 10px;
+            margin-bottom: 5px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .copy-jid-btn {
+            background-color: var(--success-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        /* Mobile-first adjustments */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>WhatsApp API GUI</h1>
+    <p style="text-align: center;">Scan the QR code in your terminal to connect, then use these forms to send messages.</p>
+
+    <div class="card">
+        <h2>Simple Text Message</h2>
+        <form id="text-message-form">
+            <div class="form-group">
+                <label for="text-jid">Recipient JID (e.g., 919999999999@s.whatsapp.net):</label>
+                <input type="text" id="text-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+            </div>
+            <div class="form-group">
+                <label for="text-content">Message Text:</label>
+                <textarea id="text-content" class="form-control" rows="3" placeholder="Hello, this is a test message!" required></textarea>
+            </div>
+            <button type="submit" class="btn">Send Text Message</button>
+            <div id="text-message-status" class="message-area"></div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Button Message</h2>
+        <form id="button-message-form">
+            <div class="form-group">
+                <label for="button-jid">Recipient JID:</label>
+                <input type="text" id="button-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+            </div>
+            <div class="form-group">
+                <label for="button-text">Message Text:</label>
+                <textarea id="button-text" class="form-control" rows="3" placeholder="Choose an option:" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="button-footer">Footer (Optional):</label>
+                <input type="text" id="button-footer" class="form-control" placeholder="Powered by Baileys">
+            </div>
+            <div class="button-section">
+                <div class="form-group">
+                    <label for="button-1">Button 1 Display Text:</label>
+                    <input type="text" id="button-1" class="form-control" placeholder="Option A" required>
+                </div>
+                <div class="form-group">
+                    <label for="button-2">Button 2 Display Text (Optional):</label>
+                    <input type="text" id="button-2" class="form-control" placeholder="Option B">
+                </div>
+                <div class="form-group">
+                    <label for="button-3">Button 3 Display Text (Optional):</label>
+                    <input type="text" id="button-3" class="form-control" placeholder="Option C">
+                </div>
+            </div>
+            <button type="submit" class="btn">Send Button Message</button>
+            <div id="button-message-status" class="message-area"></div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Image with Buttons</h2>
+        <form id="image-buttons-form">
+            <div class="form-group">
+                <label for="image-jid">Recipient JID:</label>
+                <input type="text" id="image-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+            </div>
+            <div class="form-group">
+                <label for="image-url">Image URL:</label>
+                <input type="url" id="image-url" class="form-control" value="https://raw.githubusercontent.com/infisparks/images/refs/heads/main/InfiSpark%20logo.png" required>
+            </div>
+            <div class="form-group">
+                <label for="image-caption">Image Caption:</label>
+                <textarea id="image-caption" class="form-control" rows="2" placeholder="Check out this product!" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="image-footer">Footer (Optional):</label>
+                <input type="text" id="image-footer" class="form-control" placeholder="Click a button below">
+            </div>
+            <div class="button-section">
+                <div class="form-group">
+                    <label for="image-button-1">Button 1 Display Text:</label>
+                    <input type="text" id="image-button-1" class="form-control" placeholder="View Details" required>
+                </div>
+                <div class="form-group">
+                    <label for="image-button-2">Button 2 Display Text (Optional):</label>
+                    <input type="text" id="image-button-2" class="form-control" placeholder="Buy Now">
+                </div>
+                <div class="form-group">
+                    <label for="image-button-3">Button 3 Display Text (Optional):</label>
+                    <input type="text" id="image-button-3" class="form-control" placeholder="Contact Us">
+                </div>
+            </div>
+            <button type="submit" class="btn">Send Image with Buttons</button>
+            <div id="image-buttons-status" class="message-area"></div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Interactive Message (Buttons, URL, Optional Image)</h2>
+        <form id="interactive-message-form">
+            <div class="form-group">
+                <label for="interactive-jid">Recipient JID:</label>
+                <input type="text" id="interactive-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+            </div>
+            <div class="form-group">
+                <label for="interactive-body">Message Body:</label>
+                <textarea id="interactive-body" class="form-control" rows="3" placeholder="This message has multiple button types." required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="interactive-image-url">Image URL (Optional):</label>
+                <input type="url" id="interactive-image-url" class="form-control" value="https://raw.githubusercontent.com/infisparks/images/refs/heads/main/InfiSpark%20logo.png">
+            </div>
+            <div class="form-group">
+                <label for="interactive-title">Title (for Image messages):</label>
+                <input type="text" id="interactive-title" class="form-control" placeholder="Product Announcement">
+            </div>
+            <div class="form-group">
+                <label for="interactive-subtitle">Subtitle (for Image messages):</label>
+                <input type="text" id="interactive-subtitle" class="form-control" placeholder="New stock available!">
+            </div>
+            <div class="form-group">
+                <label for="interactive-footer">Footer:</label>
+                <input type="text" id="interactive-footer" class="form-control" placeholder="Choose an option below" required>
+            </div>
+            <div class="button-section" id="interactive-buttons-container">
+                <p>Buttons (Click `Add Button` to add more. Max 3)</p>
+                <div class="form-group button-group">
+                    <label>Button 1:</label>
+                    <div class="toggle-group">
+                        <label>Type:</label>
+                        <button type="button" class="toggle-btn active" data-type="reply">Reply</button>
+                        <button type="button" class="toggle-btn" data-type="url">URL</button>
+                    </div>
+                    <input type="text" class="form-control display-text" placeholder="Display Text" required>
+                    <input type="text" class="form-control id-url-field" placeholder="Button ID (e.g., reply-1)" required>
+                </div>
+            </div>
+            <button type="button" class="btn" id="add-interactive-button">Add Button</button>
+            <button type="submit" class="btn" style="margin-top: 15px;">Send Interactive Message</button>
+            <div id="interactive-message-status" class="message-area"></div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Native Flow Message</h2>
+        <form id="native-flow-form">
+            <p>This message type supports multiple advanced button types like lists, URL, and quick replies in a single message.</p>
+            <div class="form-group">
+                <label for="native-flow-jid">Recipient JID:</label>
+                <input type="text" id="native-flow-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+            </div>
+            <div class="form-group">
+                <label for="native-flow-title">Title:</label>
+                <input type="text" id="native-flow-title" class="form-control" placeholder="Welcome to Our Store!" required>
+            </div>
+            <div class="form-group">
+                <label for="native-flow-body">Message Body:</label>
+                <textarea id="native-flow-body" class="form-control" rows="3" placeholder="Explore our new features and products." required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="native-flow-footer">Footer:</label>
+                <input type="text" id="native-flow-footer" class="form-control" placeholder="Tap a button to begin." required>
+            </div>
+            <button type="submit" class="btn">Send Native Flow Message</button>
+            <div id="native-flow-status" class="message-area"></div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Product Message (Interactive)</h2>
+        <form id="product-message-form">
+            <div class="form-group">
+                <label for="product-jid">Recipient JID:</label>
+                <input type="text" id="product-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+            </div>
+            <div class="form-group">
+                <label for="product-business-jid">Business Owner JID:</label>
+                <input type="text" id="product-business-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+            </div>
+            <div class="form-group">
+                <label for="product-image-url">Product Image URL:</label>
+                <input type="url" id="product-image-url" class="form-control" value="https://raw.githubusercontent.com/infisparks/images/refs/heads/main/InfiSpark%20logo.png" required>
+            </div>
+            <div class="form-group">
+                <label for="product-title">Product Title:</label>
+                <input type="text" id="product-title" class="form-control" placeholder="Amazing Gadget" required>
+            </div>
+            <div class="form-group">
+                <label for="product-description">Product Description (Optional):</label>
+                <textarea id="product-description" class="form-control" rows="2" placeholder="The latest gadget with advanced features."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="product-price">Price (e.g., 99.99):</label>
+                <input type="number" step="0.01" id="product-price" class="form-control" placeholder="99.99" required>
+            </div>
+            <div class="form-group">
+                <label for="product-currency">Currency Code (e.g., USD, INR):</label>
+                <input type="text" id="product-currency" class="form-control" placeholder="USD" required>
+            </div>
+            <div class="form-group">
+                <label for="product-retailer-id">Retailer ID (Optional):</label>
+                <input type="text" id="product-retailer-id" class="form-control" placeholder="SKU12345">
+            </div>
+            <div class="form-group">
+                <label for="product-url">Product URL (Optional):</label>
+                <input type="url" id="product-url" class="form-control" placeholder="https://example.com/product/1">
+            </div>
+            <div class="form-group">
+                <label for="product-caption">Message Caption:</label>
+                <textarea id="product-caption" class="form-control" rows="2" placeholder="Click to see product details and buy!" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="product-footer">Footer (Optional):</label>
+                <input type="text" id="product-footer" class="form-control" placeholder="Powered by Baileys">
+            </div>
+            <div class="button-section" id="product-buttons-container">
+                <p>Buttons (Click `Add Button` to add more. Max 3)</p>
+                <div class="form-group button-group">
+                    <label>Button 1:</label>
+                    <div class="toggle-group">
+                        <label>Type:</label>
+                        <button type="button" class="toggle-btn active" data-type="reply">Reply</button>
+                        <button type="button" class="toggle-btn" data-type="url">URL</button>
+                    </div>
+                    <input type="text" class="form-control display-text" placeholder="Display Text" required>
+                    <input type="text" class="form-control id-url-field" placeholder="Button ID (e.g., buy-now)" required>
+                </div>
+            </div>
+            <button type="button" class="btn" id="add-product-button">Add Button</button>
+            <button type="submit" class="btn" style="margin-top: 15px;">Send Product Message</button>
+            <div id="product-message-status" class="message-area"></div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Get All Groups</h2>
+        <form id="get-groups-form">
+            <div class="form-group">
+                <label for="group-search">Search Groups:</label>
+                <input type="text" id="group-search" class="form-control" placeholder="Search by name...">
+            </div>
+            <button type="submit" class="btn">Fetch & Show Groups</button>
+            <div id="get-groups-status" class="message-area"></div>
+        </form>
+        <div id="groups-results" class="results-area" style="display: none;">
+            <ul id="groups-list"></ul>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // Store all groups globally after the initial fetch
+    let allGroups = [];
+
+    // Helper function to handle form submissions
+    async function handleFormSubmit(event, endpoint, statusElementId) {
+        event.preventDefault();
+        const form = event.target;
+        const statusElement = document.getElementById(statusElementId);
+        
+        statusElement.style.display = 'none';
+        statusElement.textContent = '';
+        statusElement.className = 'message-area';
+
+        let payload = {};
+        
+        if (form.id === 'text-message-form') {
+            payload = {
+                jid: document.getElementById('text-jid').value,
+                text: document.getElementById('text-content').value
+            };
+        } else if (form.id === 'button-message-form') {
+            payload = {
+                jid: document.getElementById('button-jid').value,
+                text: document.getElementById('button-text').value,
+                footer: document.getElementById('button-footer').value,
+                button1: document.getElementById('button-1').value,
+                button2: document.getElementById('button-2').value,
+                button3: document.getElementById('button-3').value
+            };
+        } else if (form.id === 'image-buttons-form') {
+            payload = {
+                jid: document.getElementById('image-jid').value,
+                imageUrl: document.getElementById('image-url').value,
+                caption: document.getElementById('image-caption').value,
+                footer: document.getElementById('image-footer').value,
+                button1: document.getElementById('image-button-1').value,
+                button2: document.getElementById('image-button-2').value,
+                button3: document.getElementById('image-button-3').value
+            };
+        } else if (form.id === 'interactive-message-form') {
+            const buttons = [];
+            document.querySelectorAll('#interactive-buttons-container .button-group').forEach(group => {
+                const type = group.querySelector('.toggle-btn.active').dataset.type;
+                const displayText = group.querySelector('.display-text').value;
+                const idOrUrl = group.querySelector('.id-url-field').value;
+                if (displayText && idOrUrl) {
+                    if (type === 'reply') {
+                        buttons.push({ type: 'reply', displayText: displayText, id: idOrUrl });
+                    } else if (type === 'url') {
+                        buttons.push({ type: 'url', displayText: displayText, url: idOrUrl });
+                    }
+                }
+            });
+            payload = {
+                jid: document.getElementById('interactive-jid').value,
+                body: document.getElementById('interactive-body').value,
+                footer: document.getElementById('interactive-footer').value,
+                imageUrl: document.getElementById('interactive-image-url').value,
+                title: document.getElementById('interactive-title').value,
+                subtitle: document.getElementById('interactive-subtitle').value,
+                buttons: buttons
+            };
+        } else if (form.id === 'native-flow-form') {
+            payload = {
+                jid: document.getElementById('native-flow-jid').value,
+                body: document.getElementById('native-flow-body').value,
+                footer: document.getElementById('native-flow-footer').value,
+                title: document.getElementById('native-flow-title').value,
+                subtitle: document.getElementById('native-flow-subtitle').value
+            };
+        } else if (form.id === 'product-message-form') {
+            const buttons = [];
+            document.querySelectorAll('#product-buttons-container .button-group').forEach(group => {
+                const type = group.querySelector('.toggle-btn.active').dataset.type;
+                const displayText = group.querySelector('.display-text').value;
+                const idOrUrl = group.querySelector('.id-url-field').value;
+                if (displayText && idOrUrl) {
+                    if (type === 'reply') {
+                        buttons.push({ type: 'reply', displayText: displayText, id: idOrUrl });
+                    } else if (type === 'url') {
+                        buttons.push({ type: 'url', displayText: displayText, url: idOrUrl });
+                    }
+                }
+            });
+            payload = {
+                jid: document.getElementById('product-jid').value,
+                businessOwnerJid: document.getElementById('product-business-jid').value,
+                productImageUrl: document.getElementById('product-image-url').value,
+                productTitle: document.getElementById('product-title').value,
+                productDescription: document.getElementById('product-description').value,
+                price: parseFloat(document.getElementById('product-price').value),
+                currencyCode: document.getElementById('product-currency').value,
+                retailerId: document.getElementById('product-retailer-id').value,
+                productUrl: document.getElementById('product-url').value,
+                caption: document.getElementById('product-caption').value,
+                footer: document.getElementById('product-footer').value,
+                buttons: buttons
+            };
+        } else if (form.id === 'get-groups-form') {
+            payload = null; // No payload for GET
+        }
+
+        try {
+            const options = {
+                method: endpoint.includes('get-groups') ? 'GET' : 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            };
+
+            if (payload) {
+                options.body = JSON.stringify(payload);
+            }
+
+            const response = await fetch(endpoint, options);
+            const result = await response.json();
+
+            statusElement.style.display = 'block';
+
+            if (result.success) {
+                statusElement.classList.add('success');
+                statusElement.textContent = result.message;
+                if (form.id === 'get-groups-form' && result.data) {
+                    allGroups = result.data; // Store the fetched groups
+                    displayGroups(allGroups); // Display all groups initially
+                }
+            } else {
+                statusElement.classList.add('error');
+                statusElement.textContent = `Error: ${result.error || 'Unknown error'}`;
+            }
+        } catch (error) {
+            statusElement.style.display = 'block';
+            statusElement.classList.add('error');
+            statusElement.textContent = `Request Failed: ${error.message}`;
+        }
+    }
+
+    function displayGroups(groups) {
+        const groupsList = document.getElementById('groups-list');
+        const groupsResultsDiv = document.getElementById('groups-results');
+        groupsList.innerHTML = '';
+        groupsResultsDiv.style.display = 'block';
+
+        if (groups.length === 0) {
+            groupsList.innerHTML = '<li>No groups found.</li>';
+            return;
+        }
+
+        groups.forEach(group => {
+            const li = document.createElement('li');
+            li.textContent = group.name;
+
+            const copyBtn = document.createElement('button');
+            copyBtn.textContent = 'Copy JID';
+            copyBtn.className = 'copy-jid-btn';
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(group.id).then(() => {
+                    alert(`Copied JID: ${group.id}`);
+                }).catch(err => {
+                    console.error('Could not copy text: ', err);
+                });
+            };
+
+            li.appendChild(copyBtn);
+            groupsList.appendChild(li);
+        });
+    }
+
+    // Event listener for group search input
+    document.getElementById('group-search').addEventListener('input', (event) => {
+        const searchTerm = event.target.value.toLowerCase();
+        const filteredGroups = allGroups.filter(group => 
+            group.name.toLowerCase().includes(searchTerm)
+        );
+        displayGroups(filteredGroups);
+    });
+
+    // Event listeners for forms
+    document.getElementById('text-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-text-message', 'text-message-status'));
+    document.getElementById('button-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-button-message', 'button-message-status'));
+    document.getElementById('image-buttons-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-image-buttons', 'image-buttons-status'));
+    document.getElementById('interactive-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-interactive-message', 'interactive-message-status'));
+    document.getElementById('native-flow-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-native-flow', 'native-flow-status'));
+    document.getElementById('product-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-product-message', 'product-message-status'));
+    document.getElementById('get-groups-form').addEventListener('submit', (e) => handleFormSubmit(e, '/get-groups', 'get-groups-status'));
+
+    // Dynamic button functionality for Interactive Message
+    document.getElementById('add-interactive-button').addEventListener('click', () => {
+        const container = document.getElementById('interactive-buttons-container');
+        const buttonGroups = container.querySelectorAll('.button-group');
+        if (buttonGroups.length < 3) {
+            const newGroup = buttonGroups[0].cloneNode(true);
+            newGroup.querySelector('label').textContent = `Button ${buttonGroups.length + 1}:`;
+            newGroup.querySelector('.display-text').value = '';
+            newGroup.querySelector('.id-url-field').value = '';
+            newGroup.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.type === 'reply') {
+                    btn.classList.add('active');
+                }
+            });
+            container.appendChild(newGroup);
+        }
+    });
+
+    // Dynamic button functionality for Product Message
+    document.getElementById('add-product-button').addEventListener('click', () => {
+        const container = document.getElementById('product-buttons-container');
+        const buttonGroups = container.querySelectorAll('.button-group');
+        if (buttonGroups.length < 3) {
+            const newGroup = buttonGroups[0].cloneNode(true);
+            newGroup.querySelector('label').textContent = `Button ${buttonGroups.length + 1}:`;
+            newGroup.querySelector('.display-text').value = '';
+            newGroup.querySelector('.id-url-field').value = '';
+            newGroup.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.type === 'reply') {
+                    btn.classList.add('active');
+                }
+            });
+            container.appendChild(newGroup);
+        }
+    });
+
+    // Handle button type toggling
+    document.body.addEventListener('click', (e) => {
+        if (e.target.classList.contains('toggle-btn')) {
+            const btn = e.target;
+            const parent = btn.closest('.toggle-group');
+            const formGroup = parent.closest('.button-group');
+            const idUrlField = formGroup.querySelector('.id-url-field');
+
+            parent.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            if (btn.dataset.type === 'reply') {
+                idUrlField.placeholder = 'Button ID (e.g., reply-1)';
+                idUrlField.type = 'text';
+            } else if (btn.dataset.type === 'url') {
+                idUrlField.placeholder = 'Button URL (e.g., https://example.com)';
+                idUrlField.type = 'url';
+            }
+        }
+    });
+</script>
+
+</body>
+</html>
