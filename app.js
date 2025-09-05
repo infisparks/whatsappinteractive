@@ -9,7 +9,7 @@ const { Boom } = require('@hapi/boom');
 const path = require('path');
 const express = require('express');
 const qrcode = require('qrcode-terminal');
-const axios = require('axios'); // Import axios for downloading media
+const axios = require('axios');
 
 // Initialize Express app
 const app = express();
@@ -403,6 +403,56 @@ app.post('/send-product-message', async (req, res) => {
     }
 });
 
+
+// --- NEW: API Endpoint to Send an Album Message ---
+app.post('/send-album-message', async (req, res) => {
+    const { jid, mediaItems, delay } = req.body;
+
+    if (!jid || !mediaItems || !Array.isArray(mediaItems) || mediaItems.length === 0) {
+        return res.status(400).json({
+            success: false,
+            error: 'Missing required parameters: jid and a non-empty mediaItems array.'
+        });
+    }
+
+    if (!isWhatsappConnected) {
+        return res.status(503).json({
+            success: false,
+            error: 'WhatsApp client is not ready. Please wait for the "Opened connection" message.'
+        });
+    }
+
+    // Convert mediaItems to the correct format
+    const albumItems = mediaItems.map(item => {
+        const media = {};
+        if (item.type === 'image') {
+            media.image = { url: item.url };
+        } else if (item.type === 'video') {
+            media.video = { url: item.url };
+        }
+        if (item.caption) {
+            media.caption = item.caption;
+        }
+        return media;
+    });
+
+    try {
+        console.log(`Sending album message to: ${jid}`);
+        // The Baileys-pro library might have a different method signature for sendAlbumMessage
+        // Let's assume the method signature is as described in the user's prompt.
+        await sock.sendAlbumMessage(
+            jid,
+            albumItems,
+            { delay: delay || 0 } // Use user-provided delay or default to 0
+        );
+        res.status(200).json({ success: true, message: 'Album message sent successfully.' });
+    } catch (error) {
+        console.error('Error sending album message:', error);
+        res.status(500).json({ success: false, error: 'Failed to send album message. Check if the Baileys-pro library supports this method and if the media URLs are valid.' });
+    }
+});
+
+
 // --- API Endpoint to Get All Groups ---
 app.get('/get-groups', async (req, res) => {
     if (!isWhatsappConnected) {
@@ -444,6 +494,7 @@ connectToWhatsApp().then(() => {
         console.log('  POST /send-interactive-message');
         console.log('  POST /send-native-flow');
         console.log('  POST /send-product-message');
+        console.log('  POST /send-album-message'); // NEW endpoint
         console.log('  GET /get-groups');
     });
 }).catch(err => {

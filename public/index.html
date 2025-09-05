@@ -127,6 +127,27 @@
             align-items: center;
             margin-bottom: 10px;
         }
+        
+        .album-item-group {
+            border: 1px dashed var(--border-color);
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            position: relative;
+        }
+
+        .remove-item-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+        }
 
         .toggle-btn {
             background-color: var(--light-bg);
@@ -415,6 +436,38 @@
             <div id="product-message-status" class="message-area"></div>
         </form>
     </div>
+    
+    <div class="card">
+        <h2>Album Message</h2>
+        <form id="album-message-form">
+            <div class="form-group">
+                <label for="album-jid">Recipient JID:</label>
+                <input type="text" id="album-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+            </div>
+            <div class="form-group">
+                <label for="album-delay">Delay (milliseconds, optional):</label>
+                <input type="number" id="album-delay" class="form-control" value="2000" placeholder="e.g., 2000">
+                <small>Delay between sending each media item in the album.</small>
+            </div>
+            <div id="album-items-container" class="button-section">
+                <p>Album Items (Images or Videos):</p>
+                <div class="album-item-group" data-item-id="1">
+                    <button type="button" class="remove-item-btn" style="display: none;">&times;</button>
+                    <label>Item 1:</label>
+                    <div class="toggle-group">
+                        <label>Type:</label>
+                        <button type="button" class="toggle-btn active" data-type="image">Image</button>
+                        <button type="button" class="toggle-btn" data-type="video">Video</button>
+                    </div>
+                    <input type="url" class="form-control media-url-field" placeholder="Media URL (e.g., https://example.jpg)" required>
+                    <textarea class="form-control media-caption-field" rows="2" placeholder="Caption (optional)"></textarea>
+                </div>
+            </div>
+            <button type="button" class="btn" id="add-album-item">Add Item</button>
+            <button type="submit" class="btn" style="margin-top: 15px;">Send Album Message</button>
+            <div id="album-message-status" class="message-area"></div>
+        </form>
+    </div>
 
     <div class="card">
         <h2>Get All Groups</h2>
@@ -532,6 +585,21 @@
                 footer: document.getElementById('product-footer').value,
                 buttons: buttons
             };
+        } else if (form.id === 'album-message-form') {
+            const mediaItems = [];
+            document.querySelectorAll('#album-items-container .album-item-group').forEach(group => {
+                const type = group.querySelector('.toggle-btn.active').dataset.type;
+                const url = group.querySelector('.media-url-field').value;
+                const caption = group.querySelector('.media-caption-field').value;
+                if (url) {
+                    mediaItems.push({ type, url, caption });
+                }
+            });
+            payload = {
+                jid: document.getElementById('album-jid').value,
+                mediaItems,
+                delay: parseInt(document.getElementById('album-delay').value)
+            };
         } else if (form.id === 'get-groups-form') {
             payload = null; // No payload for GET
         }
@@ -616,6 +684,7 @@
     document.getElementById('interactive-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-interactive-message', 'interactive-message-status'));
     document.getElementById('native-flow-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-native-flow', 'native-flow-status'));
     document.getElementById('product-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-product-message', 'product-message-status'));
+    document.getElementById('album-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-album-message', 'album-message-status')); // NEW
     document.getElementById('get-groups-form').addEventListener('submit', (e) => handleFormSubmit(e, '/get-groups', 'get-groups-status'));
 
     // Dynamic button functionality for Interactive Message
@@ -655,25 +724,55 @@
             container.appendChild(newGroup);
         }
     });
+    
+    // Dynamic item functionality for Album Message
+    document.getElementById('add-album-item').addEventListener('click', () => {
+        const container = document.getElementById('album-items-container');
+        const albumItems = container.querySelectorAll('.album-item-group');
+        const newItem = albumItems[0].cloneNode(true);
+        newItem.querySelector('label').textContent = `Item ${albumItems.length + 1}:`;
+        newItem.querySelector('.media-url-field').value = '';
+        newItem.querySelector('.media-caption-field').value = '';
+        newItem.querySelector('.remove-item-btn').style.display = 'block';
+        newItem.querySelector('.remove-item-btn').onclick = () => { newItem.remove(); };
+        newItem.querySelectorAll('.toggle-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.type === 'image') {
+                btn.classList.add('active');
+            }
+        });
+        container.appendChild(newItem);
+    });
 
     // Handle button type toggling
     document.body.addEventListener('click', (e) => {
         if (e.target.classList.contains('toggle-btn')) {
             const btn = e.target;
             const parent = btn.closest('.toggle-group');
-            const formGroup = parent.closest('.button-group');
-            const idUrlField = formGroup.querySelector('.id-url-field');
+            const formGroup = parent.closest('.button-group') || parent.closest('.album-item-group');
+            const urlField = formGroup.querySelector('.id-url-field') || formGroup.querySelector('.media-url-field');
 
             parent.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
             if (btn.dataset.type === 'reply') {
-                idUrlField.placeholder = 'Button ID (e.g., reply-1)';
-                idUrlField.type = 'text';
+                urlField.placeholder = 'Button ID (e.g., reply-1)';
+                urlField.type = 'text';
             } else if (btn.dataset.type === 'url') {
-                idUrlField.placeholder = 'Button URL (e.g., https://example.com)';
-                idUrlField.type = 'url';
+                urlField.placeholder = 'Button URL (e.g., https://example.com)';
+                urlField.type = 'url';
+            } else if (btn.dataset.type === 'image') {
+                urlField.placeholder = 'Media URL (e.g., https://example.jpg)';
+                urlField.type = 'url';
+            } else if (btn.dataset.type === 'video') {
+                urlField.placeholder = 'Media URL (e.g., https://example.mp4)';
+                urlField.type = 'url';
             }
+        }
+        
+        // Remove button functionality
+        if (e.target.classList.contains('remove-item-btn')) {
+            e.target.closest('.album-item-group').remove();
         }
     });
 </script>
