@@ -638,35 +638,47 @@
     }
 
     function displayGroups(groups) {
-        const groupsList = document.getElementById('groups-list');
-        const groupsResultsDiv = document.getElementById('groups-results');
-        groupsList.innerHTML = '';
-        groupsResultsDiv.style.display = 'block';
+    const groupsList = document.getElementById('groups-list');
+    const groupsResultsDiv = document.getElementById('groups-results');
+    groupsList.innerHTML = '';
+    groupsResultsDiv.style.display = 'block';
 
-        if (groups.length === 0) {
-            groupsList.innerHTML = '<li>No groups found.</li>';
-            return;
-        }
-
-        groups.forEach(group => {
-            const li = document.createElement('li');
-            li.textContent = group.name;
-
-            const copyBtn = document.createElement('button');
-            copyBtn.textContent = 'Copy JID';
-            copyBtn.className = 'copy-jid-btn';
-            copyBtn.onclick = () => {
-                navigator.clipboard.writeText(group.id).then(() => {
-                    alert(`Copied JID: ${group.id}`);
-                }).catch(err => {
-                    console.error('Could not copy text: ', err);
-                });
-            };
-
-            li.appendChild(copyBtn);
-            groupsList.appendChild(li);
-        });
+    if (groups.length === 0) {
+        groupsList.innerHTML = '<li>No groups found.</li>';
+        return;
     }
+
+    groups.forEach(group => {
+        const li = document.createElement('li');
+        
+        // Create a span for the group name
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = group.name;
+        
+        // Create a span for the group ID
+        const idSpan = document.createElement('span');
+        idSpan.textContent = `ID: ${group.id}`;
+        idSpan.style.fontSize = '0.8em'; // Make the ID text a bit smaller
+        idSpan.style.color = 'var(--secondary-color)';
+        idSpan.style.display = 'block'; // Ensure it's on a new line
+        
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = 'Copy JID';
+        copyBtn.className = 'copy-jid-btn';
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(group.id).then(() => {
+                alert(`Copied JID: ${group.id}`);
+            }).catch(err => {
+                console.error('Could not copy text: ', err);
+            });
+        };
+
+        li.appendChild(nameSpan);
+        li.appendChild(idSpan); // Append the new ID span
+        li.appendChild(copyBtn);
+        groupsList.appendChild(li);
+    });
+}
 
     // Event listener for group search input
     document.getElementById('group-search').addEventListener('input', (event) => {
