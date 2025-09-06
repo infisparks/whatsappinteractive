@@ -10,10 +10,12 @@
             --secondary-color: #6c757d;
             --success-color: #28a745;
             --danger-color: #dc3545;
+            --warning-color: #ffc107;
             --light-bg: #f8f9fa;
-            --card-bg: #ffffff;
+            --dark-bg: #343a40;
             --text-color: #212529;
             --border-color: #dee2e6;
+            --card-bg: #ffffff;
             --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
 
@@ -50,7 +52,7 @@
             margin-bottom: 15px;
         }
 
-        label {
+        .form-group label {
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
@@ -64,7 +66,7 @@
             box-sizing: border-box;
             font-size: 16px;
         }
-        
+
         .form-control:focus {
             border-color: var(--primary-color);
             outline: none;
@@ -77,13 +79,17 @@
             border: none;
             cursor: pointer;
             transition: background-color 0.3s ease;
-            margin-top: 10px;
         }
 
         .btn:hover {
             background-color: #0056b3;
         }
-        
+
+        .btn:disabled {
+            background-color: var(--secondary-color);
+            cursor: not-allowed;
+        }
+
         .message-area {
             margin-top: 15px;
             padding: 10px;
@@ -94,11 +100,49 @@
         .message-area.success {
             background-color: #d4edda;
             color: #155724;
+            border-color: #c3e6cb;
         }
 
         .message-area.error {
             background-color: #f8d7da;
             color: #721c24;
+            border-color: #f5c6cb;
+        }
+        
+        .results-area {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: "Courier New", Courier, monospace;
+            font-size: 14px;
+            margin-top: 20px;
+            border: 1px solid #ced4da;
+        }
+
+        .toggle-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+        
+        .toggle-btn {
+            background-color: var(--light-bg);
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s, color 0.3s;
+            flex-grow: 1;
+        }
+
+        .toggle-btn.active {
+            background-color: var(--primary-color);
+            color: white;
         }
 
         .button-section {
@@ -107,32 +151,52 @@
             margin-top: 15px;
         }
 
-        .button-group {
-            border: 1px solid #eee;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 10px;
+        #groups-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
         }
 
-        .toggle-group {
+        #groups-list li {
+            background-color: #fff;
+            padding: 10px;
+            margin-bottom: 5px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
             display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            transition: background-color 0.2s ease;
         }
-
-        .toggle-btn {
-            flex-grow: 1;
-            background-color: var(--light-bg);
-            color: var(--primary-color);
-            border: 1px solid var(--primary-color);
-            padding: 8px;
-            border-radius: 5px;
+        
+        /* Add hover effect and cursor pointer to make groups clickable */
+        #groups-list li:hover {
+            background-color: #f0f0f0;
             cursor: pointer;
         }
+        
+        .group-info {
+            flex-grow: 1;
+        }
 
-        .toggle-btn.active {
-            background-color: var(--primary-color);
+        .copy-jid-btn {
+            background-color: var(--success-color);
             color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        
+        /* Style for highlighting inputs when a JID is filled */
+        .input-highlight {
+            transition: background-color 0.1s ease-in-out;
+            background-color: #d4edda !important;
         }
     </style>
 </head>
@@ -141,41 +205,49 @@
 <div class="container">
     <h1>WhatsApp API GUI</h1>
     <p style="text-align: center;">Scan the QR code in your terminal to connect, then use these forms to send messages.</p>
-
+    
     <div class="card">
         <h2>Interactive Message (Text or Image with Buttons)</h2>
         <form id="interactive-message-form">
             <div class="form-group">
                 <label for="interactive-jid">Recipient JID:</label>
-                <input type="text" id="interactive-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+                <input type="text" id="interactive-jid" class="form-control jid-input" placeholder="Enter number or click group below" value="@s.whatsapp.net" required>
             </div>
             <div class="form-group">
                 <label for="interactive-body">Message Body / Image Caption:</label>
                 <textarea id="interactive-body" class="form-control" rows="3" placeholder="This is the main message or caption." required></textarea>
             </div>
-             <div class="form-group">
-                <label for="interactive-footer">Footer Text:</label>
+            <div class="form-group">
+                <label for="interactive-footer">Footer:</label>
                 <input type="text" id="interactive-footer" class="form-control" placeholder="Footer text goes here" required>
             </div>
             <div class="form-group">
                 <label for="interactive-image-url">Image URL (Optional - leave blank for text-only message):</label>
                 <input type="url" id="interactive-image-url" class="form-control" placeholder="https://example.com/image.png">
             </div>
-           
+            <div class="form-group">
+                <label for="interactive-title">Title (for Image messages):</label>
+                <input type="text" id="interactive-title" class="form-control" placeholder="Product Announcement">
+            </div>
+            <div class="form-group">
+                <label for="interactive-subtitle">Subtitle (for Image messages):</label>
+                <input type="text" id="interactive-subtitle" class="form-control" placeholder="New stock available!">
+            </div>
             <div class="button-section" id="interactive-buttons-container">
-                <label>Buttons (Add up to 3)</label>
+                <p>Buttons (Click `Add Button` to add more. Max 3)</p>
                 <div class="form-group button-group">
                     <label>Button 1:</label>
                     <div class="toggle-group">
-                        <button type="button" class="toggle-btn active" data-type="reply">Reply Button</button>
-                        <button type="button" class="toggle-btn" data-type="url">URL Button</button>
+                        <label>Type:</label>
+                        <button type="button" class="toggle-btn active" data-type="reply">Reply</button>
+                        <button type="button" class="toggle-btn" data-type="url">URL</button>
                     </div>
-                    <input type="text" class="form-control display-text" placeholder="Display Text (e.g., 'Learn More')" required>
-                    <input type="text" class="form-control id-url-field" placeholder="Button ID (e.g., 'reply-1')" required>
+                    <input type="text" class="form-control display-text" placeholder="Display Text" required>
+                    <input type="text" class="form-control id-url-field" placeholder="Button ID (e.g., reply-1)" required>
                 </div>
             </div>
-            <button type="button" class="btn" id="add-interactive-button" style="background-color: var(--success-color);">Add Another Button</button>
-            <button type="submit" class="btn">Send Interactive Message</button>
+            <button type="button" class="btn" id="add-interactive-button" style="background-color: #17a2b8;">Add Button</button>
+            <button type="submit" class="btn" style="margin-top: 15px;">Send Interactive Message</button>
             <div id="interactive-message-status" class="message-area"></div>
         </form>
     </div>
@@ -185,7 +257,7 @@
         <form id="text-message-form">
             <div class="form-group">
                 <label for="text-jid">Recipient JID:</label>
-                <input type="text" id="text-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+                <input type="text" id="text-jid" class="form-control jid-input" placeholder="Enter number or click group below" value="@s.whatsapp.net" required>
             </div>
             <div class="form-group">
                 <label for="text-content">Message Text:</label>
@@ -201,7 +273,7 @@
         <form id="button-message-form">
             <div class="form-group">
                 <label for="button-jid">Recipient JID:</label>
-                <input type="text" id="button-jid" class="form-control" placeholder="91xxxxxxxxxx@s.whatsapp.net" required>
+                <input type="text" id="button-jid" class="form-control jid-input" placeholder="Enter number or click group below" value="@s.whatsapp.net" required>
             </div>
             <div class="form-group">
                 <label for="button-text">Message Text:</label>
@@ -229,9 +301,105 @@
             <div id="button-message-status" class="message-area"></div>
         </form>
     </div>
+
+    <div class="card">
+        <h2>Legacy Image with Buttons</h2>
+        <form id="image-buttons-form">
+            <div class="form-group">
+                <label for="image-jid">Recipient JID:</label>
+                <input type="text" id="image-jid" class="form-control jid-input" placeholder="Enter number or click group below" value="@s.whatsapp.net" required>
+            </div>
+            <div class="form-group">
+                <label for="image-url">Image URL:</label>
+                <input type="url" id="image-url" class="form-control" value="https://raw.githubusercontent.com/infisparks/images/refs/heads/main/InfiSpark%20logo.png" required>
+            </div>
+            <div class="form-group">
+                <label for="image-caption">Image Caption:</label>
+                <textarea id="image-caption" class="form-control" rows="2" placeholder="Check out this product!" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="image-footer">Footer (Optional):</label>
+                <input type="text" id="image-footer" class="form-control" placeholder="Click a button below">
+            </div>
+            <div class="button-section">
+                <div class="form-group">
+                    <label for="image-button-1">Button 1 Display Text:</label>
+                    <input type="text" id="image-button-1" class="form-control" placeholder="View Details" required>
+                </div>
+                <div class="form-group">
+                    <label for="image-button-2">Button 2 Display Text (Optional):</label>
+                    <input type="text" id="image-button-2" class="form-control" placeholder="Buy Now">
+                </div>
+                <div class="form-group">
+                    <label for="image-button-3">Button 3 Display Text (Optional):</label>
+                    <input type="text" id="image-button-3" class="form-control" placeholder="Contact Us">
+                </div>
+            </div>
+            <button type="submit" class="btn">Send Image with Buttons</button>
+            <div id="image-buttons-status" class="message-area"></div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Manage Groups</h2>
+        <div class="form-group">
+            <h3>Fetch All Groups (Group Finder)</h3>
+            <p>This will fetch and display all groups you are a member of.</p>
+            <form id="get-groups-form">
+                <div class="form-group">
+                    <label for="group-search">Search Groups:</label>
+                    <input type="text" id="group-search" class="form-control" placeholder="Type here to search groups by name...">
+                </div>
+                <button type="submit" class="btn">Fetch All Groups</button>
+                <div id="get-groups-status" class="message-area"></div>
+            </form>
+            <div id="groups-results" class="results-area" style="display: none;">
+                <ul id="groups-list"></ul>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 30px;">
+            <h3>Fetch a Single Group's Info</h3>
+            <p>Enter a group JID to get its metadata (name, description, participants).</p>
+            <form id="get-single-group-form">
+                <div class="form-group">
+                    <label for="single-group-jid">Group JID:</label>
+                    <input type="text" id="single-group-jid" class="form-control jid-input" placeholder="Click a group from the list above" required>
+                </div>
+                <button type="submit" class="btn">Fetch Group Info</button>
+                <div id="get-single-group-status" class="message-area"></div>
+            </form>
+            <div id="single-group-results" class="results-area" style="display: none;"></div>
+        </div>
+        
+        <div class="form-group" style="margin-top: 30px;">
+            <h3>Add Users to a Group</h3>
+            <form id="add-to-group-form">
+                <div class="form-group">
+                    <label for="add-group-jid">Group JID:</label>
+                    <input type="text" id="add-group-jid" class="form-control jid-input" placeholder="Click a group from the list above" required>
+                </div>
+                <div class="form-group">
+                    <label for="add-users-text">User Numbers to Add (one per line or comma-separated):</label>
+                    <textarea id="add-users-text" class="form-control" rows="5" placeholder="e.g., 919876543210&#10;919876543211" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="add-delay">Delay Between Adds (milliseconds):</label>
+                    <input type="number" id="add-delay" class="form-control" value="2000" min="0">
+                    <small>Set a delay to prevent being rate-limited. E.g., 2000 for a 2-second delay.</small>
+                </div>
+                <button type="submit" class="btn">Add Users to Group</button>
+                <div id="add-to-group-status" class="message-area"></div>
+            </form>
+        </div>
+    </div>
+
 </div>
 
 <script>
+    // Store all groups globally after the initial fetch
+    let allGroups = [];
+
     // Helper function to handle form submissions
     async function handleFormSubmit(event, endpoint, statusElementId) {
         event.preventDefault();
@@ -242,7 +410,8 @@
         statusElement.textContent = '';
         statusElement.className = 'message-area';
 
-        let payload;
+        let payload = {};
+        let method = 'POST';
 
         if (form.id === 'text-message-form') {
             payload = {
@@ -257,6 +426,16 @@
                 button1: document.getElementById('button-1').value,
                 button2: document.getElementById('button-2').value,
                 button3: document.getElementById('button-3').value
+            };
+        } else if (form.id === 'image-buttons-form') {
+            payload = {
+                jid: document.getElementById('image-jid').value,
+                imageUrl: document.getElementById('image-url').value,
+                caption: document.getElementById('image-caption').value,
+                footer: document.getElementById('image-footer').value,
+                button1: document.getElementById('image-button-1').value,
+                button2: document.getElementById('image-button-2').value,
+                button3: document.getElementById('image-button-3').value
             };
         } else if (form.id === 'interactive-message-form') {
             const buttons = [];
@@ -277,16 +456,39 @@
                 body: document.getElementById('interactive-body').value,
                 footer: document.getElementById('interactive-footer').value,
                 imageUrl: document.getElementById('interactive-image-url').value,
+                title: document.getElementById('interactive-title').value,
+                subtitle: document.getElementById('interactive-subtitle').value,
                 buttons: buttons
+            };
+        } else if (form.id === 'get-groups-form') {
+            payload = null;
+            method = 'GET';
+        } else if (form.id === 'get-single-group-form') {
+            const jid = document.getElementById('single-group-jid').value;
+            endpoint = `/get-group/${jid}`;
+            payload = null;
+            method = 'GET';
+        } else if (form.id === 'add-to-group-form') {
+            const userNumbersText = document.getElementById('add-users-text').value;
+            const userNumbers = userNumbersText.split(/[\n,]/).map(num => num.trim()).filter(num => num);
+            payload = {
+                groupJid: document.getElementById('add-group-jid').value,
+                userNumbers: userNumbers,
+                delayMs: parseInt(document.getElementById('add-delay').value)
             };
         }
 
         try {
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            const options = {
+                method: method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+
+            if (payload) {
+                options.body = JSON.stringify(payload);
+            }
+
+            const response = await fetch(endpoint, options);
             const result = await response.json();
 
             statusElement.style.display = 'block';
@@ -294,6 +496,15 @@
             if (result.success) {
                 statusElement.classList.add('success');
                 statusElement.textContent = result.message;
+                
+                if (form.id === 'get-groups-form' && result.data) {
+                    allGroups = result.data;
+                    displayGroups(allGroups);
+                } else if (form.id === 'get-single-group-form' && result.data) {
+                    const resultsDiv = document.getElementById('single-group-results');
+                    resultsDiv.style.display = 'block';
+                    resultsDiv.textContent = JSON.stringify(result.data, null, 2);
+                }
             } else {
                 statusElement.classList.add('error');
                 statusElement.textContent = `Error: ${result.error || 'Unknown error'}`;
@@ -305,10 +516,86 @@
         }
     }
 
-    // Event listeners for forms
+    function displayGroups(groups) {
+        const groupsList = document.getElementById('groups-list');
+        const groupsResultsDiv = document.getElementById('groups-results');
+        groupsList.innerHTML = '';
+        groupsResultsDiv.style.display = 'block';
+
+        if (groups.length === 0) {
+            groupsList.innerHTML = '<li>No groups found matching your search.</li>';
+            return;
+        }
+
+        groups.forEach(group => {
+            const li = document.createElement('li');
+            li.dataset.jid = group.id; // Store the JID in a data attribute
+
+            // CLICK-TO-FILL EVENT LISTENER
+            li.addEventListener('click', (event) => {
+                const clickedJid = event.currentTarget.dataset.jid;
+                const jidInputs = document.querySelectorAll('.jid-input');
+
+                jidInputs.forEach(input => {
+                    input.value = clickedJid;
+                    // Add a temporary highlight effect for user feedback
+                    input.classList.add('input-highlight');
+                    setTimeout(() => {
+                        input.classList.remove('input-highlight');
+                    }, 1000); // Remove highlight after 1 second
+                });
+            });
+            
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'group-info';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = group.name;
+            nameSpan.style.fontWeight = 'bold';
+            
+            const idSpan = document.createElement('span');
+            idSpan.textContent = `ID: ${group.id}`;
+            idSpan.style.fontSize = '0.8em';
+            idSpan.style.color = 'var(--secondary-color)';
+            idSpan.style.display = 'block';
+            
+            infoDiv.appendChild(nameSpan);
+            infoDiv.appendChild(idSpan);
+
+            const copyBtn = document.createElement('button');
+            copyBtn.textContent = 'Copy JID';
+            copyBtn.className = 'copy-jid-btn';
+            copyBtn.onclick = (event) => {
+                event.stopPropagation(); // Prevent the li click event from firing when button is clicked
+                navigator.clipboard.writeText(group.id).then(() => {
+                    copyBtn.textContent = 'Copied!';
+                    setTimeout(() => copyBtn.textContent = 'Copy JID', 2000);
+                });
+            };
+
+            li.appendChild(infoDiv);
+            li.appendChild(copyBtn);
+            groupsList.appendChild(li);
+        });
+    }
+
+    // Event listener for group search input
+    document.getElementById('group-search').addEventListener('input', (event) => {
+        const searchTerm = event.target.value.toLowerCase();
+        const filteredGroups = allGroups.filter(group => 
+            (group.name || '').toLowerCase().includes(searchTerm)
+        );
+        displayGroups(filteredGroups);
+    });
+
+    // Event listeners for all forms
     document.getElementById('text-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-text-message', 'text-message-status'));
     document.getElementById('button-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-button-message', 'button-message-status'));
+    document.getElementById('image-buttons-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-image-buttons', 'image-buttons-status'));
     document.getElementById('interactive-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-interactive-message', 'interactive-message-status'));
+    document.getElementById('get-groups-form').addEventListener('submit', (e) => handleFormSubmit(e, '/get-groups', 'get-groups-status'));
+    document.getElementById('get-single-group-form').addEventListener('submit', (e) => handleFormSubmit(e, '', 'get-single-group-status'));
+    document.getElementById('add-to-group-form').addEventListener('submit', (e) => handleFormSubmit(e, '/add-to-group', 'add-to-group-status'));
 
     // Dynamic button functionality for Interactive Message
     document.getElementById('add-interactive-button').addEventListener('click', () => {
@@ -319,41 +606,27 @@
             newGroup.querySelector('label').textContent = `Button ${buttonGroups.length + 1}:`;
             newGroup.querySelector('.display-text').value = '';
             newGroup.querySelector('.id-url-field').value = '';
-            newGroup.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
-            newGroup.querySelector('.toggle-btn[data-type="reply"]').classList.add('active'); // Default to reply
-            
-            // Add a remove button to the new group
-            const removeBtn = document.createElement('button');
-            removeBtn.textContent = 'Remove Button';
-            removeBtn.type = 'button';
-            removeBtn.className = 'btn';
-            removeBtn.style.backgroundColor = 'var(--danger-color)';
-            removeBtn.onclick = () => newGroup.remove();
-            newGroup.appendChild(removeBtn);
-
             container.appendChild(newGroup);
-        } else {
-            alert('You can only add a maximum of 3 buttons.');
         }
     });
 
-    // Handle button type toggling using event delegation
-    document.getElementById('interactive-buttons-container').addEventListener('click', (e) => {
+    // Handle button type toggling
+    document.body.addEventListener('click', (e) => {
         if (e.target.classList.contains('toggle-btn')) {
             const btn = e.target;
-            const parentGroup = btn.closest('.toggle-group');
-            const formGroup = btn.closest('.button-group');
-            const idUrlField = formGroup.querySelector('.id-url-field');
+            const parent = btn.closest('.toggle-group');
+            const formGroup = parent.closest('.button-group');
+            const urlField = formGroup.querySelector('.id-url-field');
 
-            parentGroup.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+            parent.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
             if (btn.dataset.type === 'reply') {
-                idUrlField.placeholder = "Button ID (e.g., 'reply-1')";
-                idUrlField.type = 'text';
+                urlField.placeholder = 'Button ID (e.g., reply-1)';
+                urlField.type = 'text';
             } else if (btn.dataset.type === 'url') {
-                idUrlField.placeholder = "Button URL (e.g., 'https://google.com')";
-                idUrlField.type = 'url';
+                urlField.placeholder = 'Button URL (e.g., https://example.com)';
+                urlField.type = 'url';
             }
         }
     });
