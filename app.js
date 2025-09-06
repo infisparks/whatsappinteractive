@@ -64,6 +64,11 @@ async function connectToWhatsApp() {
     return sock;
 }
 
+// Helper function to introduce a delay
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // --- API Endpoint to Send a Simple Text Message ---
 app.post('/send-text-message', async (req, res) => {
     const { jid, text } = req.body;
@@ -105,7 +110,7 @@ app.post('/send-button-message', async (req, res) => {
     }
     
     if (!isWhatsappConnected) {
-         return res.status(503).json({
+        return res.status(503).json({
             success: false,
             error: 'WhatsApp client is not ready. Please wait for the "Opened connection" message.'
         });
@@ -189,7 +194,7 @@ app.post('/send-interactive-message', async (req, res) => {
     }
     
     if (!isWhatsappConnected) {
-         return res.status(503).json({
+        return res.status(503).json({
             success: false,
             error: 'WhatsApp client is not ready. Please wait for the "Opened connection" message.'
         });
@@ -207,7 +212,7 @@ app.post('/send-interactive-message', async (req, res) => {
                     })
                 };
             } else if (btn.type === 'reply' && btn.displayText && btn.id) {
-                 return {
+                return {
                     name: 'quick_reply',
                     buttonParamsJson: JSON.stringify({
                         display_text: btn.displayText,
@@ -219,7 +224,7 @@ app.post('/send-interactive-message', async (req, res) => {
         }).filter(Boolean);
 
         if (interactiveButtons.length === 0) {
-             return res.status(400).json({
+            return res.status(400).json({
                 success: false,
                 error: 'No valid buttons were provided. Each button needs a type ("url" or "reply") and required fields.'
             });
@@ -482,6 +487,99 @@ app.get('/get-groups', async (req, res) => {
     }
 });
 
+// --- NEW: API Endpoint to get a single group's info ---
+app.get('/get-group/:jid', async (req, res) => {
+    const { jid } = req.params;
+
+    if (!isWhatsappConnected) {
+        return res.status(503).json({
+            success: false,
+            error: 'WhatsApp client is not ready. Please wait for the "Opened connection" message.'
+        });
+    }
+
+    try {
+        console.log(`Fetching info for group: ${jid}`);
+        const groupMetadata = await sock.groupMetadata(jid);
+
+        res.status(200).json({
+            success: true,
+            message: 'Group info fetched successfully.',
+            data: {
+                id: groupMetadata.id,
+                name: groupMetadata.subject,
+                description: groupMetadata.desc,
+                participants: groupMetadata.participants.map(p => ({
+                    id: p.id,
+                    admin: p.admin,
+                    isSuperAdmin: p.isSuperAdmin
+                }))
+            }
+        });
+    } catch (error) {
+        console.error(`Error fetching group ${jid}:`, error);
+        res.status(500).json({ success: false, error: `Failed to fetch group info: ${error.message}` });
+    }
+});
+
+// --- NEW: API Endpoint to add user(s) to a group with delay ---
+app.post('/add-to-group', async (req, res) => {
+    const { groupJid, userNumbers, delayMs } = req.body;
+
+    if (!groupJid || !userNumbers || !Array.isArray(userNumbers) || userNumbers.length === 0) {
+        return res.status(400).json({
+            success: false,
+            error: 'Missing required parameters: groupJid, and a non-empty userNumbers array.'
+        });
+    }
+
+    if (!isWhatsappConnected) {
+        return res.status(503).json({
+            success: false,
+            error: 'WhatsApp client is not ready. Please wait for the "Opened connection" message.'
+        });
+    }
+
+    try {
+        // Convert user numbers to JIDs
+        const userJids = userNumbers.map(num => `${num.replace(/[^0-9]/g, '')}@s.whatsapp.net`);
+
+        console.log(`Starting to add users to group ${groupJid} with a delay of ${delayMs || 0}ms.`);
+        
+        let addedCount = 0;
+        let failedCount = 0;
+        const failedUsers = [];
+
+        for (const jid of userJids) {
+            try {
+                await sock.groupParticipantsUpdate(groupJid, [jid], 'add');
+                addedCount++;
+                console.log(`Successfully added user: ${jid}`);
+            } catch (error) {
+                failedCount++;
+                failedUsers.push(jid);
+                console.error(`Failed to add user ${jid}:`, error.message);
+            }
+            // Wait for the specified delay before adding the next user
+            if (delayMs && userJids.indexOf(jid) < userJids.length - 1) {
+                await delay(delayMs);
+            }
+        }
+        
+        res.status(200).json({
+            success: true,
+            message: `Batch add completed. Added ${addedCount} users. Failed to add ${failedCount} users.`,
+            failedUsers: failedUsers,
+            totalUsers: userJids.length
+        });
+    } catch (error) {
+        console.error('Error in batch add operation:', error);
+        res.status(500).json({
+            success: false,
+            error: `Failed to add users to group: ${error.message}`
+        });
+    }
+});
 
 // --- Start the server ---
 connectToWhatsApp().then(() => {
@@ -494,8 +592,10 @@ connectToWhatsApp().then(() => {
         console.log('  POST /send-interactive-message');
         console.log('  POST /send-native-flow');
         console.log('  POST /send-product-message');
-        console.log('  POST /send-album-message'); // NEW endpoint
+        console.log('  POST /send-album-message');
         console.log('  GET /get-groups');
+        console.log('  GET /get-group/:jid');
+        console.log('  POST /add-to-group');
     });
 }).catch(err => {
     console.log("Failed to connect to WhatsApp:", err);

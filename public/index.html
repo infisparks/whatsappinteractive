@@ -197,6 +197,24 @@
             cursor: pointer;
             font-size: 14px;
         }
+        
+        .remove-number-btn {
+            background-color: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .add-user-item {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
 
         /* Mobile-first adjustments */
         @media (max-width: 768px) {
@@ -470,17 +488,57 @@
     </div>
 
     <div class="card">
-        <h2>Get All Groups</h2>
-        <form id="get-groups-form">
-            <div class="form-group">
-                <label for="group-search">Search Groups:</label>
-                <input type="text" id="group-search" class="form-control" placeholder="Search by name...">
+        <h2>Manage Groups</h2>
+
+        <div class="form-group">
+            <h3>Fetch All Groups</h3>
+            <p>This will fetch and display all groups you are a member of.</p>
+            <form id="get-groups-form">
+                <div class="form-group">
+                    <label for="group-search">Search Groups:</label>
+                    <input type="text" id="group-search" class="form-control" placeholder="Search by name...">
+                </div>
+                <button type="submit" class="btn">Fetch All Groups</button>
+                <div id="get-groups-status" class="message-area"></div>
+            </form>
+            <div id="groups-results" class="results-area" style="display: none;">
+                <ul id="groups-list"></ul>
             </div>
-            <button type="submit" class="btn">Fetch & Show Groups</button>
-            <div id="get-groups-status" class="message-area"></div>
-        </form>
-        <div id="groups-results" class="results-area" style="display: none;">
-            <ul id="groups-list"></ul>
+        </div>
+
+        <div class="form-group" style="margin-top: 30px;">
+            <h3>Fetch a Single Group's Info</h3>
+            <p>Enter a group JID to get its metadata (name, description, participants).</p>
+            <form id="get-single-group-form">
+                <div class="form-group">
+                    <label for="single-group-jid">Group JID:</label>
+                    <input type="text" id="single-group-jid" class="form-control" placeholder="91xxxxxxxxxx-xxxx@g.us" required>
+                </div>
+                <button type="submit" class="btn">Fetch Group Info</button>
+                <div id="get-single-group-status" class="message-area"></div>
+            </form>
+            <div id="single-group-results" class="results-area" style="display: none;"></div>
+        </div>
+        
+        <div class="form-group" style="margin-top: 30px;">
+            <h3>Add Users to a Group</h3>
+            <form id="add-to-group-form">
+                <div class="form-group">
+                    <label for="add-group-jid">Group JID:</label>
+                    <input type="text" id="add-group-jid" class="form-control" placeholder="91xxxxxxxxxx-xxxx@g.us" required>
+                </div>
+                <div class="form-group">
+                    <label for="add-users-text">User Numbers to Add (one per line or comma-separated):</label>
+                    <textarea id="add-users-text" class="form-control" rows="5" placeholder="e.g., 919876543210&#10;919876543211&#10;919876543212" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="add-delay">Delay Between Adds (milliseconds):</label>
+                    <input type="number" id="add-delay" class="form-control" value="2000" min="0">
+                    <small>Set a delay to prevent being rate-limited. E.g., 2000 for a 2-second delay.</small>
+                </div>
+                <button type="submit" class="btn">Add Users to Group</button>
+                <div id="add-to-group-status" class="message-area"></div>
+            </form>
         </div>
     </div>
 
@@ -491,7 +549,7 @@
     let allGroups = [];
 
     // Helper function to handle form submissions
-    async function handleFormSubmit(event, endpoint, statusElementId) {
+    async function handleFormSubmit(event, endpoint, statusElementId, customPayload) {
         event.preventDefault();
         const form = event.target;
         const statusElement = document.getElementById(statusElementId);
@@ -500,8 +558,9 @@
         statusElement.textContent = '';
         statusElement.className = 'message-area';
 
-        let payload = {};
-        
+        let payload = customPayload || {};
+        let method = 'POST';
+
         if (form.id === 'text-message-form') {
             payload = {
                 jid: document.getElementById('text-jid').value,
@@ -601,12 +660,37 @@
                 delay: parseInt(document.getElementById('album-delay').value)
             };
         } else if (form.id === 'get-groups-form') {
-            payload = null; // No payload for GET
+            payload = null;
+            method = 'GET';
+        } else if (form.id === 'get-single-group-form') {
+            const jid = document.getElementById('single-group-jid').value;
+            if (!jid) {
+                alert('Please enter a group JID.');
+                return;
+            }
+            endpoint = `/get-group/${jid}`;
+            payload = null;
+            method = 'GET';
+        } else if (form.id === 'add-to-group-form') {
+            const userNumbersText = document.getElementById('add-users-text').value;
+            const userNumbers = userNumbersText.split(/[\n,]/).map(num => num.trim()).filter(num => num);
+            const delayMs = parseInt(document.getElementById('add-delay').value);
+
+            if (!document.getElementById('add-group-jid').value || userNumbers.length === 0) {
+                alert('Please enter a group JID and at least one user number.');
+                return;
+            }
+
+            payload = {
+                groupJid: document.getElementById('add-group-jid').value,
+                userNumbers: userNumbers,
+                delayMs: delayMs
+            };
         }
 
         try {
             const options = {
-                method: endpoint.includes('get-groups') ? 'GET' : 'POST',
+                method: method,
                 headers: { 'Content-Type': 'application/json' }
             };
 
@@ -622,9 +706,14 @@
             if (result.success) {
                 statusElement.classList.add('success');
                 statusElement.textContent = result.message;
+                
                 if (form.id === 'get-groups-form' && result.data) {
-                    allGroups = result.data; // Store the fetched groups
-                    displayGroups(allGroups); // Display all groups initially
+                    allGroups = result.data;
+                    displayGroups(allGroups);
+                } else if (form.id === 'get-single-group-form' && result.data) {
+                    const resultsDiv = document.getElementById('single-group-results');
+                    resultsDiv.style.display = 'block';
+                    resultsDiv.textContent = JSON.stringify(result.data, null, 2);
                 }
             } else {
                 statusElement.classList.add('error');
@@ -658,9 +747,9 @@
         // Create a span for the group ID
         const idSpan = document.createElement('span');
         idSpan.textContent = `ID: ${group.id}`;
-        idSpan.style.fontSize = '0.8em'; // Make the ID text a bit smaller
+        idSpan.style.fontSize = '0.8em';
         idSpan.style.color = 'var(--secondary-color)';
-        idSpan.style.display = 'block'; // Ensure it's on a new line
+        idSpan.style.display = 'block';
         
         const copyBtn = document.createElement('button');
         copyBtn.textContent = 'Copy JID';
@@ -674,7 +763,7 @@
         };
 
         li.appendChild(nameSpan);
-        li.appendChild(idSpan); // Append the new ID span
+        li.appendChild(idSpan);
         li.appendChild(copyBtn);
         groupsList.appendChild(li);
     });
@@ -696,8 +785,10 @@
     document.getElementById('interactive-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-interactive-message', 'interactive-message-status'));
     document.getElementById('native-flow-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-native-flow', 'native-flow-status'));
     document.getElementById('product-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-product-message', 'product-message-status'));
-    document.getElementById('album-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-album-message', 'album-message-status')); // NEW
+    document.getElementById('album-message-form').addEventListener('submit', (e) => handleFormSubmit(e, '/send-album-message', 'album-message-status'));
     document.getElementById('get-groups-form').addEventListener('submit', (e) => handleFormSubmit(e, '/get-groups', 'get-groups-status'));
+    document.getElementById('get-single-group-form').addEventListener('submit', (e) => handleFormSubmit(e, '', 'get-single-group-status'));
+    document.getElementById('add-to-group-form').addEventListener('submit', (e) => handleFormSubmit(e, '/add-to-group', 'add-to-group-status'));
 
     // Dynamic button functionality for Interactive Message
     document.getElementById('add-interactive-button').addEventListener('click', () => {
@@ -786,7 +877,13 @@
         if (e.target.classList.contains('remove-item-btn')) {
             e.target.closest('.album-item-group').remove();
         }
+        
+        // Remove user number input functionality
+        if (e.target.classList.contains('remove-number-btn')) {
+            e.target.closest('.add-user-item').remove();
+        }
     });
+    
 </script>
 
 </body>
