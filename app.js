@@ -8,73 +8,448 @@ const {
 const { Boom } = require('@hapi/boom');
 const path = require('path');
 const express = require('express');
-const qrcode = require('qrcode-terminal');
+const qrcodeTerminal = require('qrcode-terminal');
+const qrcode = require('qrcode');
 const axios = require('axios');
 const fs = require('fs');
+const P = require('pino');
 
-// Initialize Express app
 const app = express();
 const port = 3000;
 
-// Middleware to parse JSON bodies
 app.use(express.json());
-
-// Serve static files from the 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// We need to keep the Baileys socket instance and connection status available globally
-let sock;
-let isWhatsappConnected = false;
+const sessions = new Map();
+const sessionStates = new Map();
+const TEMPLATES_FILE = path.join(__dirname, 'templates.json');
 
-// Main function to connect to WhatsApp
-async function connectToWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState(path.resolve(__dirname, 'auth_info_baileys'));
+const pendingTasks = new Map();
 
-    sock = makeWASocket({
-        printQRInTerminal: true,
+const logFilePath = path.join(__dirname, 'logs', 'baileys.log');
+const logDir = path.dirname(logFilePath);
+
+if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+}
+const logger = P({ level: 'debug' }, P.destination(logFilePath));
+
+function readTemplates() {
+    try {
+        if (fs.existsSync(TEMPLATES_FILE)) {
+            const data = fs.readFileSync(TEMPLATES_FILE, 'utf8');
+            return JSON.parse(data);
+        }
+        return {};
+    } catch (error) {
+        console.error('Error reading templates.json:', error);
+        return {};
+    }
+}
+
+function writeTemplates(templates) {
+    try {
+        fs.writeFileSync(TEMPLATES_FILE, JSON.stringify(templates, null, 2), 'utf8');
+        console.log('Templates saved successfully.');
+    } catch (error) {
+        console.error('Error writing templates.json:', error);
+    }
+}
+
+async function connectToWhatsApp(sessionName) {
+    if (sessions.has(sessionName)) {
+        console.log(`Session ${sessionName} already exists.`);
+        return;
+    }
+
+    const sessionPath = path.resolve(__dirname, 'auth_info_baileys', sessionName);
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+    
+    sessionStates.set(sessionName, {
+        connection: 'connecting',
+        lastDisconnect: null,
+        qr: null
+    });
+    
+    const sock = makeWASocket({
+        logger: logger,
+        printQRInTerminal: false,
         auth: state,
     });
 
+    sessions.set(sessionName, sock);
+
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-
+        
+        sessionStates.get(sessionName).connection = connection;
+        
         if (qr) {
-            console.log("QR Code received, please scan:");
-            qrcode.generate(qr, { small: true });
+            sessionStates.get(sessionName).qr = qr;
+            console.log(`QR Code received for session ${sessionName}.`);
         }
 
         if (connection === 'close') {
-            isWhatsappConnected = false;
+            sessionStates.get(sessionName).lastDisconnect = lastDisconnect;
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Connection closed due to ', lastDisconnect.error, ', reconnecting ', shouldReconnect);
+            console.log(`Connection for session ${sessionName} closed due to `, lastDisconnect.error, ', reconnecting ', shouldReconnect);
             if (shouldReconnect) {
-                connectToWhatsApp();
+                sessions.delete(sessionName);
+                connectToWhatsApp(sessionName);
+            } else {
+                console.log(`Session ${sessionName} logged out. Deleting auth info.`);
+                sessions.delete(sessionName);
             }
         } else if (connection === 'open') {
-            isWhatsappConnected = true;
-            console.log('Opened connection');
+            console.log(`Connection for session ${sessionName} opened.`);
+            sessionStates.get(sessionName).qr = null;
         }
     });
 
     sock.ev.on('creds.update', saveCreds);
 
-    sock.ev.on('messages.upsert', (event) => {
-        console.log('Received messages:', JSON.stringify(event.messages, null, 2));
-    });
+    sock.ev.on('messages.upsert', async (event) => {
+        const message = event.messages[0];
+        if (!message || !message.message) return;
 
-    return sock;
+        const jid = message.key.remoteJid;
+        const textMessage = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
+
+        if (textMessage.toLowerCase().trim() === 'hello') {
+            await sock.sendMessage(jid, { text: 'Hello World!' });
+        }
+        
+        if (textMessage.toLowerCase().trim() === 'demo') {
+            console.log('Received "demo" message. Sending product message.');
+            const demoProductMessage = {
+                jid: jid,
+                businessOwnerJid: "919958399157@s.whatsapp.net",
+                product: {
+                    imageUrl: "https://raw.githubusercontent.com/infisparks/images/refs/heads/main/Purple%20and%20White%20Simple%20World%20NGO%20Day%20Social%20Media%20Graphic%20(1000%20x%20400%20px).png",
+                    title: "Infispark: The Future of Interactive Messaging ✨",
+                    description: "Unlock powerful communication tools with our interactive WhatsApp API. From automated replies to rich media and product catalogs, we empower your business to connect and convert like never before! 🚀",
+                    price: 999,
+                    currencyCode: "INR",
+                    retailerId: "INFISPARK_PROD_1"
+                },
+                message: {
+                    caption: "Revolutionize your *business communication* now!",
+                    title: "🎉 Exclusive Offer for Our Valued Clients!",
+                    footer: "Creative Message"
+                },
+                buttons: [
+                    {
+                        type: "url",
+                        displayText: "🔗 Explore Our Website",
+                        url: "https://www.infispark.com"
+                    },
+                    {
+                        type: "reply",
+                        displayText: "🙋 Get a Free Demo",
+                        id: "DEMO_INQUIRY"
+                    },
+                    {
+                        type: "reply",
+                        displayText: "💰 View Pricing",
+                        id: "PRICING_INQUIRY"
+                    }
+                ]
+            };
+            
+            try {
+                await sendProductMessage(sock, jid, demoProductMessage);
+                console.log('Successfully sent product message in response to "demo".');
+            } catch (error) {
+                console.error('Failed to send product message in response to "demo":', error);
+            }
+        }
+    });
 }
 
-// Helper function to introduce a delay
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// --- API Endpoint to Send a Simple Text Message ---
+async function sendProductMessage(sock, jid, data) {
+    const { businessOwnerJid, product, message, buttons } = data;
+
+    const interactiveButtons = buttons.map(btn => {
+        if (btn.type === 'url') return { name: 'cta_url', buttonParamsJson: JSON.stringify({ display_text: btn.displayText, url: btn.url }) };
+        if (btn.type === 'reply') return { name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: btn.displayText, id: btn.id }) };
+        return null;
+    }).filter(Boolean);
+
+    if (interactiveButtons.length === 0) {
+        throw new Error('No valid buttons provided.');
+    }
+
+    const messageContent = {
+        product: {
+            productImage: { url: product.imageUrl },
+            productImageCount: 1,
+            title: product.title,
+            description: product.description,
+            priceAmount1000: product.price * 1000,
+            currencyCode: product.currencyCode,
+            retailerId: product.retailerId || '',
+            url: product.url || ''
+        },
+        businessOwnerJid: businessOwnerJid,
+        caption: message.caption,
+        title: message.title,
+        footer: message.footer,
+        media: true,
+        interactiveButtons: interactiveButtons
+    };
+
+    await sock.sendMessage(jid, messageContent);
+}
+
+async function processBulkTask(sessionName) {
+    const task = pendingTasks.get(sessionName);
+    if (!task) return;
+
+    const sock = sessions.get(sessionName);
+    if (!sock || sessionStates.get(sessionName)?.connection !== 'open' || task.status !== 'running') {
+        task.status = 'paused';
+        return;
+    }
+
+    while (task.currentIndex < task.targets.length && task.status === 'running') {
+        const target = task.targets[task.currentIndex];
+        try {
+            if (task.type === 'message') {
+                await sendTemplate(sock, task.template, target);
+            } else if (task.type === 'group_add') {
+                const userJid = `${target.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+                await sock.groupParticipantsUpdate(task.groupJid, [userJid], 'add');
+            }
+            task.sentCount++;
+        } catch (error) {
+            console.error(`Failed to process task for ${target}:`, error);
+            task.failedCount++;
+            task.failedTargets.push(target);
+        }
+        task.currentIndex++;
+        await delay(task.delay);
+    }
+    
+    if (task.currentIndex >= task.targets.length) {
+        task.status = 'completed';
+        task.endTime = new Date();
+        console.log(`Bulk task for session ${sessionName} completed.`);
+    }
+}
+
+async function sendTemplate(sock, template, jid) {
+    const messageContent = {};
+
+    switch (template.type) {
+        case 'text':
+            messageContent.text = template.data.text;
+            break;
+        case 'interactive':
+            const interactiveButtons = template.data.buttons.map(btn => {
+                if (btn.type === 'url') return { name: 'cta_url', buttonParamsJson: JSON.stringify({ display_text: btn.displayText, url: btn.url }) };
+                if (btn.type === 'reply') return { name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: btn.displayText, id: btn.id }) };
+                return null;
+            }).filter(Boolean);
+            messageContent.caption = template.data.body;
+            if (template.data.imageUrl) {
+                 messageContent.image = { url: template.data.imageUrl };
+            }
+            messageContent.footer = template.data.footer;
+            messageContent.interactiveButtons = interactiveButtons;
+            break;
+        case 'product':
+            await sendProductMessage(sock, jid, template.data);
+            return;
+        case 'poll':
+            messageContent.poll = {
+                name: template.data.question,
+                values: template.data.options,
+                selectableOptionsCount: template.data.selectableOptionsCount || 1
+            };
+            break;
+        case 'nativeflow':
+            const nativeFlowMessage = proto.Message.InteractiveMessage.create({
+                header: proto.Message.InteractiveMessage.Header.create({
+                    title: template.data.title,
+                    subtitle: template.data.subtitle,
+                    hasMediaAttachment: false
+                }),
+                body: proto.Message.InteractiveMessage.Body.create({ text: template.data.body }),
+                footer: proto.Message.InteractiveMessage.Footer.create({ text: template.data.footer }),
+                nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                    buttons: template.data.buttons.map(btn => ({ name: btn.name, buttonParamsJson: JSON.stringify(btn.params) }))
+                })
+            });
+            const msg = generateWAMessageFromContent(jid, {
+                viewOnceMessage: { message: { interactiveMessage: nativeFlowMessage } }
+            }, {});
+            await sock.relayMessage(msg.key.remoteJid, msg.message, { messageId: msg.key.id });
+            return;
+        default:
+            throw new Error(`Unsupported template type: ${template.type}`);
+    }
+    
+    await sock.sendMessage(jid, messageContent);
+}
+
+app.post('/create-session', (req, res) => {
+    const { sessionName } = req.body;
+    if (!sessionName) return res.status(400).json({ success: false, error: 'Session name is required.' });
+    if (sessions.has(sessionName)) return res.status(409).json({ success: false, error: `Session '${sessionName}' already exists.` });
+    connectToWhatsApp(sessionName).catch(err => {
+        console.error(`Error creating session ${sessionName}:`, err);
+        res.status(500).json({ success: false, error: 'Failed to create session.' });
+    });
+    res.status(200).json({ success: true, message: `Session creation for '${sessionName}' initiated.` });
+});
+
+app.get('/get-qr/:sessionName', async (req, res) => {
+    const { sessionName } = req.params;
+    const sessionState = sessionStates.get(sessionName);
+    if (!sessionState) return res.status(404).json({ success: false, error: 'Session not found.' });
+    if (sessionState.qr) {
+        try {
+            const qrImage = await qrcode.toDataURL(sessionState.qr);
+            return res.status(200).json({ success: true, qrImage: qrImage, connection: sessionState.connection });
+        } catch (error) {
+            console.error('Error generating QR code:', error);
+            return res.status(500).json({ success: false, error: 'Failed to generate QR code image.' });
+        }
+    } else {
+        return res.status(200).json({ success: true, qrImage: null, connection: sessionState.connection });
+    }
+});
+
+app.get('/get-sessions', (req, res) => {
+    const sessionsList = Array.from(sessions.keys()).map(name => ({
+        name: name,
+        connection: sessionStates.get(name)?.connection || 'unknown'
+    }));
+    res.status(200).json({ success: true, data: sessionsList });
+});
+
+// Corrected route definitions
+app.get('/templates', (req, res) => {
+    const allTemplates = readTemplates();
+    res.status(200).json({ success: true, data: allTemplates });
+});
+
+app.get('/templates/:type', (req, res) => {
+    const { type } = req.params;
+    const allTemplates = readTemplates();
+    const filteredTemplates = {};
+    for (const name in allTemplates) {
+        if (allTemplates[name].type === type) {
+            filteredTemplates[name] = allTemplates[name].data;
+        }
+    }
+    res.status(200).json({ success: true, data: filteredTemplates });
+});
+
+app.post('/templates', (req, res) => {
+    const { name, type, data } = req.body;
+    if (!name || !type || !data) return res.status(400).json({ success: false, error: 'Template name, type, and data are required.' });
+    const templates = readTemplates();
+    templates[name] = { type, data };
+    writeTemplates(templates);
+    res.status(200).json({ success: true, message: `Template '${name}' saved successfully.` });
+});
+
+app.post('/send-bulk-template', async (req, res) => {
+    const { sessionName, templateName, numbers, delay } = req.body;
+    if (!sessionName || !templateName || !numbers || !Array.isArray(numbers) || numbers.length === 0 || delay === undefined) {
+        return res.status(400).json({ success: false, error: 'Missing required parameters.' });
+    }
+    if (pendingTasks.has(sessionName) && pendingTasks.get(sessionName).status === 'running') {
+        return res.status(409).json({ success: false, error: 'A bulk task is already running for this session.' });
+    }
+
+    const templates = readTemplates();
+    const template = templates[templateName];
+    if (!template) {
+        return res.status(404).json({ success: false, error: 'Template not found.' });
+    }
+
+    const jids = numbers.map(num => `${num.replace(/[^0-9]/g, '')}@s.whatsapp.net`);
+    const task = {
+        type: 'message',
+        template: template,
+        targets: jids,
+        total: jids.length,
+        sentCount: 0,
+        failedCount: 0,
+        failedTargets: [],
+        currentIndex: 0,
+        status: 'running',
+        delay: delay,
+        startTime: new Date()
+    };
+    pendingTasks.set(sessionName, task);
+
+    res.status(200).json({ success: true, message: 'Bulk message task started successfully.', task });
+
+    processBulkTask(sessionName);
+});
+
+app.post('/add-to-group-bulk', async (req, res) => {
+    const { sessionName, groupJid, userNumbers, delay } = req.body;
+    if (!sessionName || !groupJid || !userNumbers || !Array.isArray(userNumbers) || userNumbers.length === 0 || delay === undefined) {
+        return res.status(400).json({ success: false, error: 'Missing required parameters.' });
+    }
+    if (pendingTasks.has(sessionName) && pendingTasks.get(sessionName).status === 'running') {
+        return res.status(409).json({ success: false, error: 'A bulk task is already running for this session.' });
+    }
+
+    const task = {
+        type: 'group_add',
+        groupJid: groupJid,
+        targets: userNumbers,
+        total: userNumbers.length,
+        sentCount: 0,
+        failedCount: 0,
+        failedTargets: [],
+        currentIndex: 0,
+        status: 'running',
+        delay: delay,
+        startTime: new Date()
+    };
+    pendingTasks.set(sessionName, task);
+
+    res.status(200).json({ success: true, message: 'Bulk add to group task started successfully.', task });
+
+    processBulkTask(sessionName);
+});
+
+app.post('/cancel-bulk-task', (req, res) => {
+    const { sessionName } = req.body;
+    const task = pendingTasks.get(sessionName);
+    if (!task) {
+        return res.status(404).json({ success: false, error: 'No active bulk task for this session.' });
+    }
+    task.status = 'cancelled';
+    task.endTime = new Date();
+    res.status(200).json({ success: true, message: 'Bulk task has been cancelled.' });
+});
+
+app.get('/get-bulk-status/:sessionName', (req, res) => {
+    const { sessionName } = req.params;
+    const task = pendingTasks.get(sessionName);
+    if (!task) {
+        return res.status(404).json({ success: false, error: 'No active bulk task for this session.' });
+    }
+    res.status(200).json({ success: true, data: task });
+});
+
 app.post('/send-text-message', async (req, res) => {
-    const { jid, text } = req.body;
+    const { sessionName, jid, text } = req.body;
+    const sock = sessions.get(sessionName);
+    if (!sock) return res.status(404).json({ success: false, error: 'Session not found.' });
+    if (sessionStates.get(sessionName)?.connection !== 'open') return res.status(503).json({ success: false, error: 'WhatsApp client for this session is not ready.' });
     if (!jid || !text) return res.status(400).json({ success: false, error: 'Missing jid or text' });
-    if (!isWhatsappConnected) return res.status(503).json({ success: false, error: 'WhatsApp client is not ready.' });
     try {
         await sock.sendMessage(jid, { text: text });
         res.status(200).json({ success: true, message: 'Text message sent successfully.' });
@@ -84,12 +459,12 @@ app.post('/send-text-message', async (req, res) => {
     }
 });
 
-// --- API Endpoint to Send an INTERACTIVE Message with URL, Reply Buttons, and Optional Media ---
 app.post('/send-interactive-message', async (req, res) => {
-    const { jid, body, footer, buttons, imageUrl, title, subtitle } = req.body;
+    const { sessionName, jid, body, footer, buttons, imageUrl, title, subtitle } = req.body;
+    const sock = sessions.get(sessionName);
+    if (!sock) return res.status(404).json({ success: false, error: 'Session not found.' });
+    if (sessionStates.get(sessionName)?.connection !== 'open') return res.status(503).json({ success: false, error: 'WhatsApp client for this session is not ready.' });
     if (!jid || !body || !buttons) return res.status(400).json({ success: false, error: 'Missing required parameters' });
-    if (!isWhatsappConnected) return res.status(503).json({ success: false, error: 'WhatsApp client is not ready.' });
-
     try {
         const interactiveButtons = buttons.map(btn => {
             if (btn.type === 'url') return { name: 'cta_url', buttonParamsJson: JSON.stringify({ display_text: btn.displayText, url: btn.url }) };
@@ -123,137 +498,101 @@ app.post('/send-interactive-message', async (req, res) => {
     }
 });
 
-// --- API Endpoint to Send a Product Message with Header ---
 app.post('/send-product-message', async (req, res) => {
-    const { jid, businessOwnerJid, product, message, buttons } = req.body;
-
+    const { sessionName, jid, businessOwnerJid, product, message, buttons } = req.body;
+    const sock = sessions.get(sessionName);
+    if (!sock) return res.status(404).json({ success: false, error: 'Session not found.' });
+    if (sessionStates.get(sessionName)?.connection !== 'open') return res.status(503).json({ success: false, error: 'WhatsApp client for this session is not ready.' });
     if (!jid || !businessOwnerJid || !product || !message || !buttons) {
         return res.status(400).json({ success: false, error: 'Missing required parameters.' });
     }
-    if (!isWhatsappConnected) {
-        return res.status(503).json({ success: false, error: 'WhatsApp client is not ready.' });
-    }
-
     try {
-        const interactiveButtons = buttons.map(btn => {
-            if (btn.type === 'url') return { name: 'cta_url', buttonParamsJson: JSON.stringify({ display_text: btn.displayText, url: btn.url }) };
-            if (btn.type === 'reply') return { name: 'quick_reply', buttonParamsJson: JSON.stringify({ display_text: btn.displayText, id: btn.id }) };
-            return null;
-        }).filter(Boolean);
-
-        if (interactiveButtons.length === 0) {
-            return res.status(400).json({ success: false, error: 'No valid buttons provided.' });
-        }
-
-        const messageContent = {
-            product: {
-                productImage: { url: product.imageUrl },
-                productImageCount: 1,
-                title: product.title,
-                description: product.description,
-                priceAmount1000: product.price * 1000,
-                currencyCode: product.currencyCode,
-                retailerId: product.retailerId || '',
-                url: product.url || ''
-            },
-            businessOwnerJid: businessOwnerJid,
-            caption: message.caption,
-            title: message.title,
-            footer: message.footer,
-            media: true,
-            interactiveButtons: interactiveButtons
-        };
-
-        await sock.sendMessage(jid, messageContent);
+        await sendProductMessage(sock, jid, req.body);
         res.status(200).json({ success: true, message: 'Product message sent successfully.' });
     } catch (error) {
         console.error('Error sending product message:', error);
-        res.status(500).json({ success: false, error: 'Failed to send product message.' });
+        res.status(500).json({ success: false, error: `Failed to send product message: ${error.message}` });
     }
 });
 
-
-// --- NEW API Endpoint for Interactive List Message ---
-app.post('/send-interactive-list-message', async (req, res) => {
-    const { jid, text, footer, buttons } = req.body;
-
-    if (!jid || !text || !buttons || !Array.isArray(buttons) || buttons.length === 0) {
-        return res.status(400).json({ success: false, error: 'Missing required parameters: jid, text, and at least one button.' });
+app.post('/send-native-flow-message', async (req, res) => {
+    const { sessionName, jid, title, subtitle, body, footer, buttons } = req.body;
+    const sock = sessions.get(sessionName);
+    if (!sock) return res.status(404).json({ success: false, error: 'Session not found.' });
+    if (sessionStates.get(sessionName)?.connection !== 'open') return res.status(503).json({ success: false, error: 'WhatsApp client for this session is not ready.' });
+    if (!jid || !body || !buttons) {
+        return res.status(400).json({ success: false, error: 'Missing required parameters: jid, body, or buttons.' });
     }
-    if (!isWhatsappConnected) {
-        return res.status(503).json({ success: false, error: 'WhatsApp client is not ready.' });
-    }
-
     try {
-        const messageContent = {
-            text: text,
-            footer: footer,
-            buttons: buttons.map(btn => {
-                let button = {
-                    buttonId: btn.buttonId,
-                    buttonText: {
-                        displayText: btn.buttonText.displayText,
-                    },
-                    type: btn.type,
-                };
-                if (btn.nativeFlowInfo) {
-                    button.nativeFlowInfo = btn.nativeFlowInfo;
-                }
-                return button;
+        const interactiveMessage = proto.Message.InteractiveMessage.create({
+            header: proto.Message.InteractiveMessage.Header.create({
+                title: title,
+                subtitle: subtitle,
+                hasMediaAttachment: false
             }),
-            headerType: 1,
-            viewOnce: true,
-        };
+            body: proto.Message.InteractiveMessage.Body.create({
+                text: body
+            }),
+            footer: proto.Message.InteractiveMessage.Footer.create({
+                text: footer
+            }),
+            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                buttons: buttons.map(btn => {
+                    return {
+                        name: btn.name,
+                        buttonParamsJson: JSON.stringify(btn.params)
+                    };
+                }),
+            })
+        });
 
-        await sock.sendMessage(jid, messageContent);
-        res.status(200).json({ success: true, message: 'Interactive list message sent successfully.' });
+        const msg = generateWAMessageFromContent(jid, {
+            viewOnceMessage: {
+                message: {
+                    interactiveMessage: interactiveMessage
+                }
+            }
+        }, {});
+        
+        await sock.relayMessage(msg.key.remoteJid, msg.message, { messageId: msg.key.id });
+
+        res.status(200).json({ success: true, message: 'NativeFlow message sent successfully.' });
     } catch (error) {
-        console.error('Error sending interactive list message:', error);
-        res.status(500).json({ success: false, error: 'Failed to send interactive list message.' });
+        console.error('Error sending NativeFlow message:', error);
+        res.status(500).json({ success: false, error: `Failed to send NativeFlow message: ${error.message}` });
     }
 });
 
-// --- NEW API Endpoint for Simple Payment Request Message ---
-app.post('/send-payment-request', async (req, res) => {
-    const { jid, amount, currency, from, note, quotedMessage } = req.body;
-    if (!jid || !amount || !currency || !from) {
-        return res.status(400).json({ success: false, error: 'Missing required parameters: jid, amount, currency, or from.' });
+app.post('/send-poll-message', async (req, res) => {
+    const { sessionName, jid, question, options, selectableOptionsCount } = req.body;
+    const sock = sessions.get(sessionName);
+    if (!sock) return res.status(404).json({ success: false, error: 'Session not found.' });
+    if (sessionStates.get(sessionName)?.connection !== 'open') return res.status(503).json({ success: false, error: 'WhatsApp client for this session is not ready.' });
+    if (!jid || !question || !options || !Array.isArray(options) || options.length < 2) {
+        return res.status(400).json({ success: false, error: 'Missing required parameters: jid, question, or at least two options.' });
     }
-    if (!isWhatsappConnected) {
-        return res.status(503).json({ success: false, error: 'WhatsApp client is not ready.' });
-    }
-
     try {
-        const paymentData = {
-            currency: currency,
-            amount: parseInt(amount),
-            from: from,
-            note: note,
-            background: {
-                backgroundColor: '#ffffff'
+        const pollMessage = {
+            poll: {
+                name: question,
+                values: options,
+                selectableOptionsCount: selectableOptionsCount || 1
             }
         };
 
-        const quoted = quotedMessage ? {
-            key: {
-                remoteJid: jid,
-                id: 'placeholder-id', // Placeholder for a real message ID
-            },
-            message: { conversation: quotedMessage }
-        } : null;
-
-        await sock.sendMessage(jid, { requestPayment: paymentData }, { quoted: quoted });
-        res.status(200).json({ success: true, message: 'Payment request message sent successfully.' });
+        await sock.sendMessage(jid, pollMessage);
+        res.status(200).json({ success: true, message: 'Poll message sent successfully.' });
     } catch (error) {
-        console.error('Error sending payment request message:', error);
-        res.status(500).json({ success: false, error: `Failed to send payment request: ${error.message}` });
+        console.error('Error sending poll message:', error);
+        res.status(500).json({ success: false, error: `Failed to send poll message: ${error.message}` });
     }
 });
 
-
-// --- API Endpoint to Get All Groups ---
-app.get('/get-groups', async (req, res) => {
-    if (!isWhatsappConnected) return res.status(503).json({ success: false, error: 'WhatsApp client is not ready.' });
+app.get('/get-groups/:sessionName', async (req, res) => {
+    const { sessionName } = req.params;
+    const sock = sessions.get(sessionName);
+    if (!sock) return res.status(404).json({ success: false, error: 'Session not found.' });
+    if (sessionStates.get(sessionName)?.connection !== 'open') return res.status(503).json({ success: false, error: 'WhatsApp client for this session is not ready.' });
     try {
         const groups = await sock.groupFetchAllParticipating();
         const groupList = Object.values(groups).map(g => ({ id: g.id, name: g.subject }));
@@ -264,10 +603,11 @@ app.get('/get-groups', async (req, res) => {
     }
 });
 
-// --- API Endpoint to get a single group's info ---
-app.get('/get-group/:jid', async (req, res) => {
-    const { jid } = req.params;
-    if (!isWhatsappConnected) return res.status(503).json({ success: false, error: 'WhatsApp client is not ready.' });
+app.get('/get-group/:sessionName/:jid', async (req, res) => {
+    const { sessionName, jid } = req.params;
+    const sock = sessions.get(sessionName);
+    if (!sock) return res.status(404).json({ success: false, error: 'Session not found.' });
+    if (sessionStates.get(sessionName)?.connection !== 'open') return res.status(503).json({ success: false, error: 'WhatsApp client for this session is not ready.' });
 
     try {
         const groupMetadata = await sock.groupMetadata(jid);
@@ -290,14 +630,14 @@ app.get('/get-group/:jid', async (req, res) => {
     }
 });
 
-// --- API Endpoint to add user(s) to a group with delay ---
 app.post('/add-to-group', async (req, res) => {
-    const { groupJid, userNumbers, delayMs } = req.body;
+    const { sessionName, groupJid, userNumbers, delayMs } = req.body;
+    const sock = sessions.get(sessionName);
+    if (!sock) return res.status(404).json({ success: false, error: 'Session not found.' });
+    if (sessionStates.get(sessionName)?.connection !== 'open') return res.status(503).json({ success: false, error: 'WhatsApp client for this session is not ready.' });
     if (!groupJid || !userNumbers || !Array.isArray(userNumbers) || userNumbers.length === 0) {
         return res.status(400).json({ success: false, error: 'Missing required parameters.' });
     }
-    if (!isWhatsappConnected) return res.status(503).json({ success: false, error: 'WhatsApp client is not ready.' });
-
     try {
         const userJids = userNumbers.map(num => `${num.replace(/[^0-9]/g, '')}@s.whatsapp.net`);
         let addedCount = 0;
@@ -329,20 +669,43 @@ app.post('/add-to-group', async (req, res) => {
     }
 });
 
-// --- Start the server ---
-connectToWhatsApp().then(() => {
-    app.listen(port, () => {
-        console.log(`Server is running on http://localhost:${port}`);
-        console.log('API Endpoints available:');
-        console.log('  POST /send-text-message');
-        console.log('  POST /send-interactive-message');
-        console.log('  POST /send-product-message');
-        console.log('  POST /send-interactive-list-message');
-        console.log('  POST /send-payment-request');
-        console.log('  GET /get-groups');
-        console.log('  GET /get-group/:jid');
-        console.log('  POST /add-to-group');
-    });
-}).catch(err => {
-    console.log("Failed to connect to WhatsApp:", err);
+async function startup() {
+    const authDir = path.resolve(__dirname, 'auth_info_baileys');
+    if (fs.existsSync(authDir)) {
+        const sessionFolders = fs.readdirSync(authDir, { withFileTypes: true })
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => dirent.name);
+
+        for (const sessionName of sessionFolders) {
+            console.log(`Found existing session: ${sessionName}. Attempting to reconnect...`);
+            await connectToWhatsApp(sessionName).catch(err => {
+                console.error(`Failed to reconnect to session ${sessionName}:`, err);
+            });
+        }
+    }
+}
+
+app.listen(port, () => {
+    console.log(`Server is running on http://localhost:${port}`);
+    console.log('API Endpoints available:');
+    console.log('  POST /create-session');
+    console.log('  GET /get-sessions');
+    console.log('  GET /get-qr/:sessionName');
+    console.log('  GET /templates');
+    console.log('  POST /templates');
+    console.log('  POST /send-template');
+    console.log('  POST /send-bulk-template');
+    console.log('  GET /get-bulk-status/:sessionName');
+    console.log('  POST /cancel-bulk-task');
+    console.log('  POST /add-to-group-bulk');
+    console.log('  POST /send-text-message');
+    console.log('  POST /send-interactive-message');
+    console.log('  POST /send-product-message');
+    console.log('  POST /send-native-flow-message');
+    console.log('  POST /send-poll-message');
+    console.log('  GET /get-groups/:sessionName');
+    console.log('  GET /get-group/:sessionName/:jid');
+    console.log('  POST /add-to-group');
 });
+
+startup();

@@ -1,0 +1,30 @@
+{
+  "1": {
+    "type": "interactive",
+    "data": {
+      "body": "asdf",
+      "imageUrl": "https://raw.githubusercontent.com/infisparks/images/refs/heads/main/feedback.png",
+      "buttons": [
+        {
+          "type": "reply",
+          "displayText": "sfad",
+          "id": "sadf"
+        }
+      ]
+    }
+  },
+  "2": {
+    "type": "interactive",
+    "data": {
+      "body": "sadf",
+      "imageUrl": "https://raw.githubusercontent.com/infisparks/images/refs/heads/main/feedback.png",
+      "buttons": [
+        {
+          "type": "url",
+          "displayText": "sadf",
+          "url": "https://asdf"
+        }
+      ]
+    }
+  }
+}
